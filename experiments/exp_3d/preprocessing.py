@@ -88,9 +88,9 @@ def get_transform(subset, modalities,mask, mode, method, tval, target_size, targ
                               new_key_name='mask_img'))
     #rajout condition mask 
     if mask: 
-        transformers.append(ResampleReshapeAlign(target_size, target_spacing, target_direction, target_origin=None, keys=("pet_img", "ct_img", "mask_img")))
+        transformers.append(ResampleReshapeAlign(target_size, target_spacing, target_direction, target_origin=None, keys=("pet_img", "ct_img", "mask_img"),mask=mask))
     else: 
-        transformers.append(ResampleReshapeAlign(target_size, target_spacing, target_direction, target_origin=None, keys=("pet_img", "ct_img")))
+        transformers.append(ResampleReshapeAlign(target_size, target_spacing, target_direction, target_origin=None, keys=("pet_img", "ct_img"),mask=mask))
     
     if cache_pp:
         transformers = Compose(transformers)

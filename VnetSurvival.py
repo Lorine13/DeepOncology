@@ -1,7 +1,7 @@
 import tensorflow as tf
 from networks.Layers import convolution, down_convolution, up_convolution, get_num_channels
 from networks.Vnet import *
-
+import numpy as np
 
 
 def dropout(x, keep_prob):
@@ -113,7 +113,7 @@ def get_loss_survival(time_horizon_dim):
     time_horizon_dim : output dimension of the output layer of the model
     loss_survival : returns the loss of the model (log_likelihood loss + ranking loss)
     '''
-    def (y_true, y_pred):
+    def loss_survival(y_true, y_pred):
         time=y_true.numpy()[0]
         event=y_true.numpy()[1]
 
@@ -124,14 +124,55 @@ def get_loss_survival(time_horizon_dim):
         
         return loss
 
-def td_c_index():
+    return loss_survival
 
-
-def c_index():
+def metric_td_c_index(time_horizon_dim):
     
+    def td_c_index(y_true, y_pred):
+        time=y_true.numpy()[0]
+        event=y_true.numpy()[1]
+        y_pred=y_pred.numpy()
+        '''
+        This is a cause-specific c(t)-index
+        - Prediction      : risk at Time (higher --> more risky)
+        - Time_survival   : survival/censoring time
+        - Death           :
+            > 1: death
+            > 0: censored (including death from other cause)
+        - Time            : time of evaluation (time-horizon when evaluating C-index)
+        '''
+        for eval_time in range (time_horizon_dim):
+            pred_t = np.sum(y_pred[:,:(eval_time+1)], axis=1)
+        
+            N = len(y_pred)
+            A = np.zeros((N,N))
+            Q = np.zeros((N,N))
+            N_t = np.zeros((N,N))
+            Num = 0
+            Den = 0
+            results=np.array([])
+            for i in range(N):
+                A[i, np.where(time[i] < time)] = 1
+                Q[i, np.where(pred_t[i] > pred_t)] = 1
+
+                if (time[i]<=eval_time and event[i]==1):
+                    N_t[i,:] = 1
+            Num  = np.sum(((A)*N_t)*Q)
+            Den  = np.sum((A)*N_t)
+            if Num == 0 and Den == 0:
+                results = -1 # not able to compute c-index!
+            else:
+                results.append(float(Num/Den))
+        
+        result = np.mean(results)
+        print( 'average c-index = ' + str('%.4f' %(result)))
+        return result
+    return td_c_index
 
 
-class VNetSurvival(object):
+
+
+class VnetSurvival(object):
     """
     Implements VNet architecture https://arxiv.org/abs/1606.04797
     """
@@ -196,8 +237,8 @@ class VNetSurvival(object):
 
     def build_network(self, input_):
 
-        self.loss_log_likelihood()
-        self.cause_specific_ranking_loss()
+        #self.loss_log_likelihood()
+        #self.cause_specific_ranking_loss()
 
         x = input_
         keep_prob = self.keep_prob
@@ -222,19 +263,16 @@ class VNetSurvival(object):
 
         x = convolution_block(x, self.bottom_convolutions, self.kernel_size, keep_prob, activation_fn=self.activation_fn)
 
-       
-        x = tf.keras.layers.Flatten()(x)
-        print("Ici y a le nombre de neurones après le flatten : ")
-        print(x.shape())
-        x = tf.keras.layers.Dense(256, activation='relu', name='dense_1')(x)
-        x = tf.keras.layers.Dense(128, activation='relu', name='dense_1')(x)
-        x = tf.keras.layers.Dense(64, activation='relu', name='dense_2')(x)
-        x = tf.keras.layers.Dense(time_horizon, activation='relu', name='dense_3')(x)
-
         # x = tf.keras.layers.BatchNormalization(axis=-1, momentum=0.99, epsilon=0.001, center=True, scale=True)(x)
         if self.keep_prob_last_layer < 1.0:
             x = tf.keras.layers.Dropout(1.0 - self.keep_prob_last_layer)(x)
-        logits = convolution(x, self.out_channels)
+        x = convolution(x, self.out_channels)
+
+        x = tf.keras.layers.Flatten()(x)
+        
+        x = tf.keras.layers.Dense(512, activation='relu', name='dense_1')(x)
+        x = tf.keras.layers.Dense(256, activation='relu', name='dense_2')(x)
+        logits = tf.keras.layers.Dense(self.time_horizon, activation='relu', name='dense_3')(x)
 
         return logits
 

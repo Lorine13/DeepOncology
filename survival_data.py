@@ -5,12 +5,12 @@ from datetime import date
 import openpyxl
 import math 
 import tensorflow_addons as tfa
-from keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping, TensorBoard
+from tensorflow.keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping, TensorBoard
 from sklearn.model_selection import train_test_split
-
+from datetime import datetime
 from experiments.exp_3d.preprocessing import *
 from dataGenerator import *
-from .Vnet_survival import *
+from VnetSurvival import *
 
 """ https://nbviewer.jupyter.org/github/sebp/survival-cnn-estimator/blob/master/tutorial_tf2.ipynb 
     https://github.com/chl8856/DeepHit
@@ -25,10 +25,10 @@ method = ['otsu', 'absolute', 'relative', 'otsu_abs'][0]
 
 #callbacks
 patience = 10
-ReduceLROnPlateau = False
-EarlyStopping = False
-ModelCheckpoint = True
-TensorBoard = True
+ReduceLROnPlateau1 = False
+EarlyStopping1 = False
+ModelCheckpoint1 = True
+TensorBoard1 = True
 
 #parameters
 image_shape= (256, 128, 128)
@@ -118,6 +118,20 @@ def get_data_survival(base_path, csv_path, excel_path):
     y_time=y_time.astype(np.int32)
     return list(zip(PT_paths, CT_paths)), list(zip(y_time, y_event))
 
+trained_model_path = None #If None, train from scratch 
+training_model_folder = '../model/'
+now = datetime.now().strftime("%Y%m%d-%H:%M:%S")
+
+training_model_folder = os.path.join(training_model_folder, now)  # '/path/to/folder'
+if not os.path.exists(training_model_folder):
+    os.makedirs(training_model_folder)
+logdir = os.path.join(training_model_folder, 'logs')
+if not os.path.exists(logdir):
+    os.makedirs(logdir)
+
+
+
+
 base_path='../../FLIP_NIFTI/'
 x,y= get_data_survival(base_path,"","")
 
@@ -166,26 +180,26 @@ val_generator = DataGeneratorSurvival(val_images_paths_x,
                                         x_key='input')
 
 #################################################################################
-
+print("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 with strategy.scope():
     # definition of loss, optimizer and metrics
     loss_object = get_loss_survival(time_horizon_dim=time_horizon)
     optimizer = tfa.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-4)
-    td_c_index = td_c_index(dim=3, vnet=True)
+    td_c_index = metric_td_c_index(time_horizon_dim=time_horizon)
     metrics = [td_c_index] 
 
 # callbacks
 callbacks = []
-if ReduceLROnPlateau == True :
+if ReduceLROnPlateau1 == True :
     # reduces learning rate if no improvement are seen
-    learning_rate_reduction = ReduceLROnPlateau(monitor='val_loss',
+    learning_rate_reduction = ReduceLROnPlateau(monitor= loss_object,
                                                 patience=patience ,
                                                 verbose=1,
                                                 factor=0.5,
                                                 min_lr=0.0000001)
     callbacks.append(learning_rate_reduction)
 
-if EarlyStopping == True :
+if EarlyStopping1 == True :
     # stop training if no improvements are seen
     early_stop = EarlyStopping(monitor="val_loss",
                                 mode="min",
@@ -193,61 +207,65 @@ if EarlyStopping == True :
                                 restore_best_weights=True)
     callbacks.append(early_stop)
 
-if ModelCheckpoint == True :
+if ModelCheckpoint1 == True :
     # saves model weights to file
     # 'model_weights.{epoch:02d}-{val_loss:.2f}.hdf5'
     checkpoint = ModelCheckpoint(os.path.join(training_model_folder, 'model_weights.h5'),
-                                    monitor='val_loss',  
+                                    monitor=loss_object,  #td_c_index ?
                                     verbose=1,
                                     save_best_only=True,
                                     mode='min',  # max
                                     save_weights_only=False)
     callbacks.append(checkpoint)
 
-if TensorBoard == True :
+if TensorBoard1 == True :
     tensorboard_callback = TensorBoard(log_dir=logdir,
                                         histogram_freq=0,
-                                        batch_size=batch_size,
+                                        update_freq='epoch',
                                         write_graph=True,
                                         write_grads=True,
-                                        write_images=False)
+                                        write_images=True)
     callbacks.append(tensorboard_callback)
 
-# Define model
-if architecture.lower() == 'vnet':
-    with strategy.scope():
-        model = VNetSurvival(image_shape,
-                in_channels,
-                out_channels,
-                channels_last,
-                keep_prob,
-                keep_prob_last_layer,
-                kernel_size,
-                num_channels,
-                num_levels,
-                num_convolutions,
-                bottom_convolutions,
-                activation,
-                activation_last_layer).create_model()
-else:
-    raise ValueError('Architecture ' + architecture + ' not supported. Please ' +
-                        'choose one of unet|vnet.')
+print("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+with strategy.scope():
+    model = VnetSurvival(image_shape,
+            in_channels,
+            out_channels,
+            time_horizon,
+            channels_last,
+            keep_prob,
+            keep_prob_last_layer,
+            kernel_size,
+            num_channels,
+            num_levels,
+            num_convolutions,
+            bottom_convolutions,
+            activation,
+            activation_last_layer).create_model()
+
+
 with strategy.scope():
     model.compile(loss=loss_object, optimizer=optimizer, metrics=metrics)
 
 #if trained_model_path is not None:
 #    with strategy.scope():
 #        model.load_weights(trained_model_path)
-
+print("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
 print(model.summary())
 
-"""
-    history = model.fit(train_generator,
-                        steps_per_epoch=len(train_generator),
-                        validation_data=val_generator,
-                        validation_steps=len(val_generator),
-                        epochs=epochs,
-                        callbacks=callbacks,  # initial_epoch=0,
-                        verbose=1
-                        )
-"""
+
+model_json = model.to_json()
+with open(os.path.join(training_model_folder, 'architecture_{}_model_{}.json'.format(architecture, now)),
+            "w") as json_file:
+    json_file.write(model_json)
+
+# training model
+history = model.fit(train_generator,
+                    steps_per_epoch=len(train_generator),
+                    validation_data=val_generator,
+                    validation_steps=len(val_generator),
+                    epochs=epochs,
+                    callbacks=callbacks,  # initial_epoch=0,
+                    verbose=1
+                    )

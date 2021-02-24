@@ -26,9 +26,14 @@ class Compose(object):
         self.transformers = transformers
 
     def __call__(self, img_dict):
+        print("Compose function !")
+        print(type(img_dict['pet_img']))
+        print(type(img_dict['ct_img'])) 
         for transform in self.transformers:
             img_dict = transform(img_dict)
-
+        print("Compose function 2!")
+        print(type(img_dict['pet_img']))
+        print(type(img_dict['ct_img'])) 
         return img_dict
 
 
@@ -59,7 +64,8 @@ class LoadNifti(object):
             output[key] = sitk.ReadImage(img_dict[key], self.dtypes[key])
             if self.image_only:
                 output[key] = sitk.GetArrayFromImage(output[key])
-
+        print("LoadNifti function!")
+        print(type(output['pet_img']))
         return output
 
 
@@ -86,20 +92,27 @@ class ResampleReshapeAlign(object):
     """
 
     #import Fusion and FusionMask from DicomToCNN
-    def __init__(self,target_size, target_spacing, target_direction, target_origin=None, keys=("pet_img", "ct_img", "mask_img")):
+    def __init__(self,target_size, target_spacing, target_direction, target_origin=None, keys=("pet_img", "ct_img", "mask_img"),mask=True):
         self.keys = (keys,) if isinstance(keys, str) else keys
         self.target_size = target_size
         self.target_spacing = target_spacing
         self.target_direction = target_direction
         self.target_origin = target_origin
+        self.mask=mask
 
     def __call__(self, img_dict):
         #1
+        print("ReshapeAligne... function !")
+        print(type(img_dict['pet_img']))
+        print(type(img_dict['ct_img']))
         fusion_object = Fusion(img_dict[self.keys[0]], img_dict[self.keys[1]], self.target_size, self.target_spacing, self.target_direction, mode ='dict') 
         img_dict[self.keys[0]], img_dict[self.keys[1]] = fusion_object.resample(mode='head')
-
+        print("ReshapeAlign... function après fusion!")
+        print(type(img_dict['pet_img']))
+        print(type(img_dict['ct_img']))
+        print(img_dict['ct_img'])
         #rajout condition mask     
-        if mask: 
+        if self.mask: 
             #2
             fusion_mask_object = FusionMask(img_dict[self.keys[0]], img_dict[self.keys[2]], self.target_size, self.target_spacing, self.target_direction, mode ='dict')
             img_dict[self.keys[2]] = fusion_mask_object.resample()
@@ -449,7 +462,7 @@ class RandAffine(object):
             default_value = {'pet_img': 0.0, 'ct_img': -1000.0, 'mask_img': 0}
         elif keys==('pet_img', 'ct_img'):
             interpolator = {'pet_img': sitk.sitkBSpline,
-                    'ct_img': sitk.sitkBSpline}
+                                'ct_img': sitk.sitkBSpline}
             default_value = {'pet_img': 0.0, 'ct_img': -1000.0}
         
         
@@ -470,10 +483,14 @@ class RandAffine(object):
 
         # apply the same deformation to every image
         for key in self.keys:
+            print("RandAffine function !")
+            print(type(img_dict['pet_img']))
+            print(type(img_dict['ct_img']))
             img_dict[key] = self.AffineTransformation(image=img_dict.pop(key),
                                                       interpolator=self.interpolator[key],
                                                       deformations=def_ratios,
                                                       default_value=self.default_value[key])
+
         return img_dict
 
     @staticmethod
