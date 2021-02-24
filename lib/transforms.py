@@ -97,11 +97,12 @@ class ResampleReshapeAlign(object):
         #1
         fusion_object = Fusion(img_dict[self.keys[0]], img_dict[self.keys[1]], self.target_size, self.target_spacing, self.target_direction, mode ='dict') 
         img_dict[self.keys[0]], img_dict[self.keys[1]] = fusion_object.resample(mode='head')
-            
 
-        #2
-        fusion_mask_object = FusionMask(img_dict[self.keys[0]], img_dict[self.keys[2]], self.target_size, self.target_spacing, self.target_direction, mode ='dict')
-        img_dict[self.keys[2]] = fusion_mask_object.resample()
+        #rajout condition mask     
+        if mask: 
+            #2
+            fusion_mask_object = FusionMask(img_dict[self.keys[0]], img_dict[self.keys[2]], self.target_size, self.target_spacing, self.target_direction, mode ='dict')
+            img_dict[self.keys[2]] = fusion_mask_object.resample()
 
         return img_dict 
 
@@ -441,11 +442,17 @@ class RandAffine(object):
         """
 
             # sitk.sitkLinear, sitk.sitkBSpline, sitk.sitkNearestNeighbor
-        interpolator = {'pet_img': sitk.sitkBSpline,
-                            'ct_img': sitk.sitkBSpline,
-                            'mask_img': sitk.sitkNearestNeighbor}
- 
-        default_value = {'pet_img': 0.0, 'ct_img': -1000.0, 'mask_img': 0}
+        if keys==('pet_img', 'ct_img', 'mask_img'):    
+            interpolator = {'pet_img': sitk.sitkBSpline,
+                                'ct_img': sitk.sitkBSpline,
+                                'mask_img': sitk.sitkNearestNeighbor}
+            default_value = {'pet_img': 0.0, 'ct_img': -1000.0, 'mask_img': 0}
+        elif keys==('pet_img', 'ct_img'):
+            interpolator = {'pet_img': sitk.sitkBSpline,
+                    'ct_img': sitk.sitkBSpline}
+            default_value = {'pet_img': 0.0, 'ct_img': -1000.0}
+        
+        
 
         self.keys = (keys,) if isinstance(keys, str) else keys
 

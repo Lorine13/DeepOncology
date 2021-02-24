@@ -17,7 +17,7 @@ from lib.utils import sec2str
 
 
 
-
+"""
 def check_path_is_valid(files):
     indexes = files.keys() if isinstance(files, dict) else np.arange(len(files))
 
@@ -45,9 +45,9 @@ def aggregate_paths(pp_dir):
     for subset in files:
         check_path_is_valid(files[subset])
     return files
+"""
 
-
-def get_transform(subset, modalities, mode, method, tval, target_size, target_spacing, target_direction, target_origin = None,  data_augmentation=True, from_pp=False, cache_pp=False):
+def get_transform(subset, modalities,mask, mode, method, tval, target_size, target_spacing, target_direction, target_origin = None,  data_augmentation=True, from_pp=False, cache_pp=False):
     """[summary]
 
     Args:
@@ -61,11 +61,22 @@ def get_transform(subset, modalities, mode, method, tval, target_size, target_sp
                           else : don't need tval, tval = 0.0 ]
 
     """
-    
-    keys = tuple(list(modalities) + ['mask_img'])
-    transformers = [LoadNifti(keys=keys)]  # Load NIFTI file from path
+    #rajout dtypes 
+    if mask:
+        keys = tuple(list(modalities) + ['mask_img'])
+        dtypes= {'pet_img': sitk.sitkFloat32,
+            'ct_img': sitk.sitkFloat32,
+            'mask_img': sitk.sitkUInt8}
+    else: 
+        keys = tuple(list(modalities))
+        dtypes= {'pet_img': sitk.sitkFloat32,
+            'ct_img': sitk.sitkFloat32}
 
-    if not from_pp:
+    #rajout dans LoadNifti 
+    transformers = [LoadNifti(keys=keys, dtypes=dtypes)]  # Load NIFTI file from path
+    #
+    # rajout and mask 
+    if not from_pp and mask:
 
         # Generate ground-truth from PET and ROIs
         if mode == 'binary':
@@ -75,8 +86,12 @@ def get_transform(subset, modalities, mode, method, tval, target_size, target_sp
             transformers.append(
                 Roi2MaskProbs(keys=('pet_img', 'mask_img'), mode=mode, method=method,
                               new_key_name='mask_img'))
-
-    transformers.append(ResampleReshapeAlign(target_size, target_spacing, target_direction, target_origin=None, keys=("pet_img", "ct_img", "mask_img")))
+    #rajout condition mask 
+    if mask: 
+        transformers.append(ResampleReshapeAlign(target_size, target_spacing, target_direction, target_origin=None, keys=("pet_img", "ct_img", "mask_img")))
+    else: 
+        transformers.append(ResampleReshapeAlign(target_size, target_spacing, target_direction, target_origin=None, keys=("pet_img", "ct_img")))
+    
     if cache_pp:
         transformers = Compose(transformers)
         return transformers
@@ -88,10 +103,16 @@ def get_transform(subset, modalities, mode, method, tval, target_size, target_sp
         translation = 10
         scaling = 0.1
         rotation = (np.pi / 60, np.pi / 30, np.pi / 60)
-        transformers.append(RandAffine(keys=('pet_img', 'ct_img', 'mask_img'), translation=translation, scaling=scaling, rotation=rotation))
-    
+        if mask:
+            transformers.append(RandAffine(keys=('pet_img', 'ct_img', 'mask_img'), translation=translation, scaling=scaling, rotation=rotation))
+        else:
+            transformers.append(RandAffine(keys=('pet_img', 'ct_img'), translation=translation, scaling=scaling, rotation=rotation))
+
     # Convert Simple ITK image into numpy 3d-array
-    transformers.append(Sitk2Numpy(keys=('pet_img', 'ct_img', 'mask_img')))
+    if mask: 
+        transformers.append(Sitk2Numpy(keys=('pet_img', 'ct_img', 'mask_img')))
+    else: 
+        transformers.append(Sitk2Numpy(keys=('pet_img', 'ct_img')))
 
     # Normalize input values
     for modality in modalities:
@@ -111,7 +132,9 @@ def get_transform(subset, modalities, mode, method, tval, target_size, target_sp
         transformers.append(AddChannel(keys=modalities, channel_first=False))
         transformers.append(RenameDict(keys=modalities, keys2='input'))
 
-    transformers.append(AddChannel(keys='mask_img', channel_first=False))
+    if mask: 
+        transformers.append(AddChannel(keys='mask_img', channel_first=False))
+
     transformers = Compose(transformers)
     return transformers
 
