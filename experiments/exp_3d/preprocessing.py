@@ -71,7 +71,6 @@ def get_transform(subset, modalities,mask, mode, method, tval, target_size, targ
         keys = tuple(list(modalities))
         dtypes= {'pet_img': sitk.sitkFloat32,
             'ct_img': sitk.sitkFloat32}
-
     #rajout dans LoadNifti 
     transformers = [LoadNifti(keys=keys, dtypes=dtypes)]  # Load NIFTI file from path
     #

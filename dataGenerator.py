@@ -60,10 +60,11 @@ class DataGeneratorSurvival(tf.keras.utils.Sequence):
 
             # add it to the batch
             X_batch.append(img_dict[self.x_key])
-            Y_batch[0].append(self.y_train[0](idx))
-            Y_batch[1].append(self.y_train[0](idx))
+            Y_batch[0].append(self.y_train[0][idx])
+            Y_batch[1].append(self.y_train[1][idx])
 
-        X_batch = tf.constant(X_batch)
-        Y_batch = tf.constant(Y_batch)
-
+        #X_batch = tf.constant(X_batch)
+        #Y_batch = tf.constant(Y_batch)
+        X_batch = np.array(X_batch)
+        Y_batch = np.array(Y_batch)
         return X_batch, Y_batch

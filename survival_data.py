@@ -27,8 +27,8 @@ method = ['otsu', 'absolute', 'relative', 'otsu_abs'][0]
 patience = 10
 ReduceLROnPlateau1 = False
 EarlyStopping1 = False
-ModelCheckpoint1 = True
-TensorBoard1 = True
+ModelCheckpoint1 = False
+TensorBoard1 = False
 
 #parameters
 image_shape= (256, 128, 128)
@@ -158,7 +158,7 @@ for i in range(len(x_val)):
     dataset_x['val'].append({'pet_img':x_val[i][0], 'ct_img':x_val[i][1]})
 
 train_transforms = get_transform('train', modalities, mask, mode, method, tval, target_size, target_spacing, target_direction, None, data_augmentation = True, from_pp=False, cache_pp=False)
-val_transforms = get_transform('val', modalities, mode, mask, method, tval, target_size, target_spacing, target_direction, None,  data_augmentation = False, from_pp=False, cache_pp=False)
+val_transforms = get_transform('val', modalities, mask, mode, method, tval, target_size, target_spacing, target_direction, None,  data_augmentation = False, from_pp=False, cache_pp=False)
 
 # multi gpu training strategy
 strategy = tf.distribute.MirroredStrategy()
@@ -180,13 +180,12 @@ val_generator = DataGeneratorSurvival(val_images_paths_x,
                                         x_key='input')
 
 #################################################################################
-print("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 with strategy.scope():
     # definition of loss, optimizer and metrics
-    loss_object = get_loss_survival(time_horizon_dim=time_horizon)
+    loss_object = get_loss_survival(time_horizon_dim=time_horizon, batch_size=batch_size)
     optimizer = tfa.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-4)
-    td_c_index = metric_td_c_index(time_horizon_dim=time_horizon)
-    metrics = [td_c_index] 
+    td_c_index = metric_td_c_index(time_horizon_dim=time_horizon, batch_size=batch_size)
+    metrics = [] 
 
 # callbacks
 callbacks = []
@@ -227,7 +226,6 @@ if TensorBoard1 == True :
                                         write_images=True)
     callbacks.append(tensorboard_callback)
 
-print("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 with strategy.scope():
     model = VnetSurvival(image_shape,
             in_channels,
@@ -248,10 +246,9 @@ with strategy.scope():
 with strategy.scope():
     model.compile(loss=loss_object, optimizer=optimizer, metrics=metrics)
 
-#if trained_model_path is not None:
-#    with strategy.scope():
-#        model.load_weights(trained_model_path)
-print("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
+if trained_model_path is not None:
+    with strategy.scope():
+        model.load_weights(trained_model_path)
 print(model.summary())
 
 
