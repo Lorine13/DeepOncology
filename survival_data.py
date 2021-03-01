@@ -3,6 +3,7 @@ import numpy as np
 import os
 from datetime import date
 import openpyxl
+import csv
 import math 
 import tensorflow_addons as tfa
 from tensorflow.keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping, TensorBoard
@@ -28,7 +29,7 @@ patience = 10
 ReduceLROnPlateau1 = False
 EarlyStopping1 = False
 ModelCheckpoint1 = False
-TensorBoard1 = False
+TensorBoard1 = True
 
 #parameters
 image_shape= (256, 128, 128)
@@ -67,55 +68,72 @@ shuffle = True
 
 #FIN PARAMETRES 
 
-def get_data_survival(base_path, csv_path, excel_path):
+def get_data_survival(base_path, excel_path, create_csv, csv_path=''):
+    '''
+        retrieve the survival data from the excel file and the path of the nifti files from the base path 
+        create a csv file containing all the data if csv == True
+    '''
     y_time=[]
     y_event=[]
     PT_paths=[]
     CT_paths=[]
-    data_exists= True
-    excel = openpyxl.load_workbook('FLIP.xlsx')
+    Anonym=[]
+    data_exists= True #boolean path of the nifti file found
+    data_dict=dict()
+    #data_dict['time']=
+
+    #open file containing survival information
+    excel = openpyxl.load_workbook(excel_path)
     sheet = excel.active
 
+    #for each patient
     for i in range(2, sheet.max_row):
         data_exists=True
         x = sheet.cell(row=i, column=5)
         if (x.value != None):
-            #retrieve the path to the nifti files from the patient : folder with the Anonymisation name from the excel 
-            path=base_path+sheet.cell(row=i, column=2).value+'/'
-            nifti_path= glob.glob(os.path.join(path, '**/*_nifti_PT.nii'), recursive=True)
-            if (nifti_path):
-                PT_paths=np.append(PT_paths, [nifti_path[0]])
-                nifti_path2= glob.glob(os.path.join(path, '**/*_nifti_CT.nii'), recursive=True)
-                if ( nifti_path2):
-                    CT_paths=np.append(CT_paths, [nifti_path2[0]])
-                else:
-                    data_exists=False
+            #retrieve the path to the nifti files from the patient : folder with the Anonymisation name from the excel cell(row=i, column=2)
+            path = base_path+sheet.cell(row=i, column=2).value+'/'
+            nifti_path_PT= glob.glob(os.path.join(path, '**/*_nifti_PT.nii'), recursive=True)
+            nifti_path_CT= glob.glob(os.path.join(path, '**/*_nifti_CT.nii'), recursive=True)
+            if nifti_path_PT and nifti_path_CT:
+                Anonym = np.append(Anonym,sheet.cell(row=i, column=2).value)
+                PT_paths=np.append(PT_paths, [nifti_path_PT[0]])
+                CT_paths=np.append(CT_paths, [nifti_path_CT[0]])
             else:
                 data_exists=False
 
             if data_exists:
-                #retrieve y_time and y_event from excel 
-
+                #retrieve y_time and y_event from excel (date format (month/day/year))
                 x = x.value.split('/')
                 x = [int(i) for i in x]
                 diagnosis_date= date(x[2],x[0],x[1])
+                #if censored and there is a last check up date retrieve date
                 if (sheet.cell(row=i, column=7).value==0 and sheet.cell(row=i, column=9).value!=None):
                     y= sheet.cell(row=i, column=9).value.split('/')
                     y = [int(j) for j in y]
                     last_checkup_date= date(y[2],y[0],y[1])
+                #if not censored and there is a relapse date retrieve date 
                 elif (sheet.cell(row=i, column=7).value==1 and sheet.cell(row=i, column=8).value!=None):
                     y= sheet.cell(row=i, column=8).value.split('/')
                     y = [int(j) for j in y]
                     last_checkup_date= date(y[2],y[0],y[1])
                 
+                #time is given in 30 days intervals 
                 time= int(((last_checkup_date-diagnosis_date).days)/30)
                 y_time=np.append(y_time, [time])
                 y_event=np.append(y_event,[int(sheet.cell(row=i, column=7).value)])
 
-
-
     y_event= y_event.astype(np.int32)
     y_time=y_time.astype(np.int32)
+
+    data_zip = zip(Anonym,y_time, y_event, CT_paths, PT_paths)
+
+    if create_csv: 
+        with open(csv_path, 'w') as csv_path:
+            wtr = csv.writer(open (csv_path, 'w'), delimiter=',', lineterminator='\n')
+            wtr.writerow(["anonymisation,time,event,CT_path,PT_path"])
+            for x in data_zip : wtr.writerow ([str(x[0])+','+str(x[1])+','+str(x[2])+','+str(x[3])+','+str(x[4])])
+
     return list(zip(PT_paths, CT_paths)), list(zip(y_time, y_event))
 
 trained_model_path = None #If None, train from scratch 
@@ -133,8 +151,10 @@ if not os.path.exists(logdir):
 
 
 base_path='../../FLIP_NIFTI/'
-x,y= get_data_survival(base_path,"","")
-
+excel_path='./FLIP.xlsx'
+csv_path="CSV_FLIP.csv"
+x,y= get_data_survival(base_path,excel_path,True,csv_path)
+"""
 #number of neurons on the output layer 
 time_horizon = math.ceil(max(y)[0]*1.2)
 
@@ -266,3 +286,4 @@ history = model.fit(train_generator,
                     callbacks=callbacks,  # initial_epoch=0,
                     verbose=1
                     )
+                    """
