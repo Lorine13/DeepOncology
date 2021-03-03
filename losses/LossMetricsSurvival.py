@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+import sys
 
 def get_logLikelihood_LOSS(time, event, time_horizon_dim, y_pred,batch_size):
     '''
@@ -45,7 +46,8 @@ def get_logLikelihood_LOSS(time, event, time_horizon_dim, y_pred,batch_size):
     #for censored: log \sum P(T>t|x)
     tmp2=(1-event)*tf.math.log(oui)
     
-    loss=-tf.reduce_sum(tmp1+tmp2)
+    #loss=-tf.reduce_sum(tmp1+tmp2)
+    loss=-tf.reduce_mean(tmp1+tmp2)
     return loss
 
 def get_ranking_LOSS(time, event, time_horizon_dim, y_pred, batch_size):
@@ -99,7 +101,7 @@ def get_ranking_LOSS(time, event, time_horizon_dim, y_pred, batch_size):
 
     return loss
 
-def get_loss_survival(time_horizon_dim, batch_size):
+def get_loss_survival(time_horizon_dim, batch_size, alpha, beta):
     ''' 
     time_horizon_dim : output dimension of the output layer of the model
     loss_survival : returns the loss of the model (log_likelihood loss + ranking loss)
@@ -112,7 +114,7 @@ def get_loss_survival(time_horizon_dim, batch_size):
         loss_logLikelihood= get_logLikelihood_LOSS(time, event, time_horizon_dim, y_pred, batch_size)
         loss_ranking=get_ranking_LOSS(time, event, time_horizon_dim, y_pred, batch_size)
         
-        loss= loss_logLikelihood + loss_ranking
+        loss= alpha*loss_logLikelihood + beta*loss_ranking
         return loss
 
     return loss_survival
@@ -120,7 +122,6 @@ def get_loss_survival(time_horizon_dim, batch_size):
 def metric_td_c_index(time_horizon_dim,batch_size):
     
     def td_c_index(y_true, y_pred):
-        print("par ici c'est la metric")
         time=y_true[0]
         event=y_true[1]
         '''
@@ -179,12 +180,20 @@ def metric_td_c_index(time_horizon_dim,batch_size):
 
             Num= tf.reduce_sum((mat_A*mat_N_t)*mat_Q)
             Den=tf.reduce_sum(mat_A*mat_N_t)
+            #tf.print(mat_A, output_stream=sys.stdout)
             #Num  = np.sum(((A)*N_t)*Q)
             #Den  = np.sum((A)*N_t)
             if Num != 0.0 and Den != 0.0:
                 nb+=1
                 resultat+=float(Num/Den)
-        resultat = resultat/float(nb)
+        if resultat!=0:
+            resultat = resultat/float(nb)
         return float(resultat)
     return td_c_index
 
+def metric_brier_score(time_horizon_dim,batch_size):
+    
+    def brier_score(y_true, y_pred):
+        result=0
+        return result
+    return brier_score

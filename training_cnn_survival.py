@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 import math 
-import tensorflow as tf
+import matplotlib.pyplot as plt
 
 import tensorflow_addons as tfa
 from tensorflow.keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping, TensorBoard
@@ -11,7 +11,9 @@ from networks.VnetSurvival import *
 from lib.DataManagerSurvival import DataManagerSurvival
 from losses.LossMetricsSurvival import *
 
-""" https://nbviewer.jupyter.org/github/sebp/survival-cnn-estimator/blob/master/tutorial_tf2.ipynb 
+""" 
+    For now based on : 
+    https://nbviewer.jupyter.org/github/sebp/survival-cnn-estimator/blob/master/tutorial_tf2.ipynb 
     https://github.com/chl8856/DeepHit
 """
 #PARAMETRE MODEL SAVING
@@ -46,7 +48,7 @@ create_csv = False
 
 #PARAMETRE DATA GENERATOR
 batch_size = 2
-epochs = 100
+epochs = 70
 shuffle = True 
 
 #DATA MANAGER GET DATA
@@ -79,20 +81,21 @@ strategy = tf.distribute.MirroredStrategy()
 
 #################### MODEL LOSS METRICS OPTIMIZER ############################
 time_horizon = math.ceil(max(y)[0]*1.2) #number of neurons on the output layer 
-
+alpha=1
+beta=0.5
 with strategy.scope():
     # definition of loss, optimizer and metrics
-    loss_object = get_loss_survival(time_horizon_dim=time_horizon, batch_size=batch_size)
+    loss_object = get_loss_survival(time_horizon_dim=time_horizon, batch_size=batch_size, alpha=alpha, beta=beta)
     optimizer = tfa.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-4)
     td_c_index = metric_td_c_index(time_horizon_dim=time_horizon, batch_size=batch_size)
-    metrics = [] 
+    metrics = [td_c_index] 
 
 ############################ MODEL CALLBACKS #################################
 #PARAMETRES CALLBACKS
 patience = 10
 ReduceLROnPlateau1 = False
 EarlyStopping1 = False
-ModelCheckpoint1 = False
+ModelCheckpoint1 = True
 TensorBoard1 = True
 
 callbacks = []
@@ -194,3 +197,69 @@ history = model.fit(train_generator,
                     verbose=1
                     )
                     
+##########################################################################################################################
+#ALTERNATIVE K-fold cross validation
+"""from sklearn.model_selection import KFold
+
+K=5
+loss_per_fold=[]
+kfold= KFold(n_splits=K, shuffle=True)
+fold_no=1
+
+for train, test in kfold.split(x,y):
+
+    #generate a print
+    print('----------------------------------------------------')
+    print(f'Training for fold {fold_no} ...')
+    #IMAGE PROCESSING
+    train_transforms = get_transform('train', modalities, mask, mode, method, tval, target_size, target_spacing, target_direction, None, data_augmentation = True, from_pp=False, cache_pp=False)
+    val_transforms = get_transform('val', modalities, mask, mode, method, tval, target_size, target_spacing, target_direction, None,  data_augmentation = False, from_pp=False, cache_pp=False)
+    
+    x_train= [x[element] for element in train]
+    x_test= [x[element] for element in test]
+    y_train=[y[element] for element in train]
+    y_test=[y[element] for element in test]
+    #print(x_train)
+    train_images_paths_x, val_images_paths_x = DM.get_images_paths_train_val(x_train,x_test)
+    #DATA GENERATOR
+    train_generator = DataGeneratorSurvival(train_images_paths_x,
+                                            y_train,
+                                            train_transforms,
+                                            batch_size=batch_size,
+                                            shuffle=shuffle,
+                                            x_key='input')
+
+    val_generator = DataGeneratorSurvival(val_images_paths_x,
+                                            y_test,
+                                            val_transforms,
+                                            batch_size=batch_size,
+                                            shuffle=False,
+                                            x_key='input')
+    #fit data to model
+    history = model.fit(train_generator,
+                    steps_per_epoch=len(train_generator),
+                    validation_data=val_generator,
+                    validation_steps=len(val_generator),
+                    epochs=epochs,
+                    callbacks=callbacks,  # initial_epoch=0,
+                    verbose=1
+                    )
+    print(f'Loss for fold {fold_no}:{history.history[loss_object]}')
+    loss_per_fold.append(history.history[loss_object])
+    fold_no+=1
+
+print('-----------------------------------------------------------------')
+print(f'Loss per fold')
+for i in range(0, len(loss_per_fold)):
+    print('------------------------------------------------------------------')
+    print(f'> Fold {i+1} - Loss: {loss_per_fold[i]}')
+print('------------------------------------------------------------------')    
+print('Average loss for all folds:')
+print(f'> Loss: {np.mean(loss_per_fold)} (+- {np.std(loss_per_fold)})')
+print('------------------------------------------------------------------')
+"""
+#plt.plot(history.history[loss_object])  
+#plt.title('Validation loss history')
+#plt.ylabel('loss value')
+#plt.xlabel('No. epoch')
+#plt.show()                

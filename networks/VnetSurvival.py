@@ -1,6 +1,5 @@
 import tensorflow as tf
 from networks.Layers import convolution, down_convolution, up_convolution, get_num_channels
-from networks.Vnet import *
 
 
 def dropout(x, keep_prob):
@@ -133,11 +132,13 @@ class VnetSurvival(object):
 
         #Here: bottleneck of a VNet architecture 
         x = tf.keras.layers.Flatten()(x)
-        if self.time_horizon>600:
+        if self.time_horizon<400:
             x = tf.keras.layers.Dense(512, activation='relu', name='dense_1')(x)
-        if self.time_horizon>300:
+            x = tf.keras.layers.Dropout(0.3)(x)
+        if self.time_horizon<150:
             x = tf.keras.layers.Dense(256, activation='relu', name='dense_2')(x)
-        if self.time_horizon>200:
+            x = tf.keras.layers.Dropout(0.2)(x)
+        if self.time_horizon<80:
             x = tf.keras.layers.Dense(128, activation='relu', name='dense_3')(x)
 
         logits = tf.keras.layers.Dense(self.time_horizon, activation='relu', name='dense_4')(x)
