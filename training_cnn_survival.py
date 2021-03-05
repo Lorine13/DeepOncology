@@ -60,7 +60,12 @@ train_images_paths_x, val_images_paths_x = DM.get_images_paths_train_val(x_train
 #IMAGE PROCESSING
 train_transforms = get_transform('train', modalities, mask, mode, method, tval, target_size, target_spacing, target_direction, None, data_augmentation = True, from_pp=False, cache_pp=False)
 val_transforms = get_transform('val', modalities, mask, mode, method, tval, target_size, target_spacing, target_direction, None,  data_augmentation = False, from_pp=False, cache_pp=False)
-
+oui=[i[0] for i in y]
+print(oui)
+print(len(oui))
+oui= set(oui)
+print(oui)
+print(len(oui))
 #DATA GENERATOR
 train_generator = DataGeneratorSurvival(train_images_paths_x,
                                         y_train,
@@ -82,13 +87,15 @@ strategy = tf.distribute.MirroredStrategy()
 #################### MODEL LOSS METRICS OPTIMIZER ############################
 time_horizon = math.ceil(max(y)[0]*1.2) #number of neurons on the output layer 
 alpha=1
-beta=0.5
+beta=2
+gamma=1
 with strategy.scope():
     # definition of loss, optimizer and metrics
-    loss_object = get_loss_survival(time_horizon_dim=time_horizon, batch_size=batch_size, alpha=alpha, beta=beta)
+    loss_object = get_loss_survival(time_horizon_dim=time_horizon, batch_size=batch_size, alpha=alpha, beta=beta, gamma=gamma)
     optimizer = tfa.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-4)
     td_c_index = metric_td_c_index(time_horizon_dim=time_horizon, batch_size=batch_size)
-    metrics = [td_c_index] 
+    c_index= metric_cindex(time_horizon_dim=time_horizon,batch_size=batch_size)
+    metrics = [td_c_index, c_index] 
 
 ############################ MODEL CALLBACKS #################################
 #PARAMETRES CALLBACKS
@@ -168,8 +175,7 @@ with strategy.scope():
             num_levels,
             num_convolutions,
             bottom_convolutions,
-            activation,
-            activation_last_layer).create_model()
+            activation).create_model()
 
 
 with strategy.scope():

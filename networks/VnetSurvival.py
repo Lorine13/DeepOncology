@@ -54,8 +54,7 @@ class VnetSurvival(object):
                  num_levels=4,
                  num_convolutions=(1, 2, 3, 3),
                  bottom_convolutions=3,
-                 activation=tf.keras.layers.PReLU(),
-                 activation_last_layer='softmax'):
+                 activation=tf.keras.layers.PReLU()):
 
         """
         :param image_shape: Shape of the input image
@@ -73,8 +72,6 @@ class VnetSurvival(object):
         :param num_convolutions: An array with the number of convolutions at each level.
         :param bottom_convolutions: The number of convolutions at the bottom level of the network.
         :param activation: The activation function.
-        :param activation_last_layer: The activation function used in the last layer of the cnn.
-                                      Set to None to return logits.
         """
         self.image_shape = image_shape
         assert len(image_shape) == 3
@@ -96,9 +93,6 @@ class VnetSurvival(object):
             self.activation_fn = self.activation_fn.lower()
             self.activation_fn = tf.keras.layers.PReLU() if self.activation_fn == 'prelu' \
                 else tf.keras.activations.get(self.activation_fn)
-        self.activation_last_layer = activation_last_layer.lower() if isinstance(activation_last_layer, str) \
-            else activation_last_layer
-
 
 
     def build_network(self, input_):
@@ -137,7 +131,7 @@ class VnetSurvival(object):
             x = tf.keras.layers.Dropout(0.3)(x)
         if self.time_horizon<150:
             x = tf.keras.layers.Dense(256, activation='relu', name='dense_2')(x)
-            x = tf.keras.layers.Dropout(0.2)(x)
+            #x = tf.keras.layers.Dropout(0.2)(x)
         if self.time_horizon<80:
             x = tf.keras.layers.Dense(128, activation='relu', name='dense_3')(x)
 
