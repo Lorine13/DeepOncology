@@ -47,25 +47,20 @@ csv_path="../CSV_FLIP.csv"
 create_csv = False
 
 #PARAMETRE DATA GENERATOR
-batch_size = 2
+batch_size = 4
 epochs = 70
 shuffle = True 
 
 #DATA MANAGER GET DATA
 DM = DataManagerSurvival(base_path, excel_path,csv_path)
 x,y = DM.get_data_survival(create_csv=create_csv)
-x_train, x_val, y_train, y_val = DM.split_train_val_test_split(x, y, test_size=0.0, val_size=0.2, random_state=42)
+x_train, x_val, y_train, y_val = DM.split_train_val_test_split(x, y, test_size=0.0, val_size=0.25, random_state=42)
 train_images_paths_x, val_images_paths_x = DM.get_images_paths_train_val(x_train,x_val)
 
 #IMAGE PROCESSING
 train_transforms = get_transform('train', modalities, mask, mode, method, tval, target_size, target_spacing, target_direction, None, data_augmentation = True, from_pp=False, cache_pp=False)
 val_transforms = get_transform('val', modalities, mask, mode, method, tval, target_size, target_spacing, target_direction, None,  data_augmentation = False, from_pp=False, cache_pp=False)
-oui=[i[0] for i in y]
-print(oui)
-print(len(oui))
-oui= set(oui)
-print(oui)
-print(len(oui))
+
 #DATA GENERATOR
 train_generator = DataGeneratorSurvival(train_images_paths_x,
                                         y_train,
@@ -88,7 +83,7 @@ strategy = tf.distribute.MirroredStrategy()
 time_horizon = math.ceil(max(y)[0]*1.2) #number of neurons on the output layer 
 alpha=1
 beta=2
-gamma=1
+gamma=0
 with strategy.scope():
     # definition of loss, optimizer and metrics
     loss_object = get_loss_survival(time_horizon_dim=time_horizon, batch_size=batch_size, alpha=alpha, beta=beta, gamma=gamma)
@@ -160,7 +155,7 @@ bottom_convolutions= 3
 activation= "relu"
 activation_last_layer= 'sigmoid'
 
-
+dim_mlp=4
 
 with strategy.scope():
     model = VnetSurvival(image_shape,
@@ -176,8 +171,23 @@ with strategy.scope():
             num_convolutions,
             bottom_convolutions,
             activation).create_model()
-
-
+"""
+with strategy.scope():
+    model=create_mixed_data_network(dim_mlp,
+            image_shape,
+            in_channels,
+            out_channels,
+            time_horizon,
+            channels_last,
+            keep_prob,
+            keep_prob_last_layer,
+            kernel_size,
+            num_channels,
+            num_levels,
+            num_convolutions,
+            bottom_convolutions,
+            activation))
+"""
 with strategy.scope():
     model.compile(loss=loss_object, optimizer=optimizer, metrics=metrics)
 

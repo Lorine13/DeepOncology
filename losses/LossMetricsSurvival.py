@@ -201,6 +201,114 @@ def metric_td_c_index(time_horizon_dim,batch_size):
         return float(resultat)
     return td_c_index
 
+def metric_cindex(time_horizon_dim,batch_size, tied_tol=1e-2):
+    
+    def cindex(y_true, y_pred):
+        time=y_true[0]
+        event=y_true[1]
+        '''
+        This is a cause-specific c(t)-index
+        - Prediction      : risk at Time (higher --> more risky)
+        - Time_survival   : survival/censoring time
+        - Death           :
+            > 1: death
+            > 0: censored (including death from other cause)
+        - Time            : time of evaluation (time-horizon when evaluating C-index)
+        '''
+        nb=0
+        resultat=0.0
+        for j in range (batch_size):
+            #results=tf.constant([])
+            #a=tf.zeros([1,eval_time],dtype=tf.int32)
+            #b=tf.ones([1,time_horizon_dim-eval_time],dtype=tf.int32)
+            #c= tf.concat([a,b],1)
+            a=tf.ones([1,time[j]],dtype=tf.int32)
+            b=tf.zeros([1,time_horizon_dim-time[j]],dtype=tf.int32)
+            c= tf.concat([a,b],1)
+            c=tf.cast(c, dtype=tf.float32)
+            d=y_pred*c
+            pred_t=tf.math.reduce_sum(d,1, keepdims=True)
+            
+            for i in range(batch_size):
+                A=tf.math.greater(time, time[i])
+                A=tf.where(A,1,0)
+                Q=tf.math.greater(pred_t[i],pred_t)
+                Q=tf.where(Q,1,0)
+                #A[i, np.where(time[i] < time)] = 1
+                #Q[i, np.where(pred_t[i] > pred_t)] = 1
+
+                if (event[i]==1):
+                    N_t=tf.ones([1,batch_size])
+                else:
+                    N_t=tf.zeros([1,batch_size])
+                    #N_t[i,:] = 1
+                    
+                if i==0:
+                    mat_A=A
+                    mat_Q=Q
+                    mat_N_t=N_t
+                else:
+                    mat_A=tf.concat([mat_A,A],0)
+                    mat_Q=tf.concat([mat_Q,Q],0)
+                    mat_N_t=tf.concat([mat_N_t,N_t],0)
+            
+            mat_A=tf.reshape(mat_A, [batch_size,batch_size])
+            mat_Q=tf.reshape(mat_Q, [batch_size,batch_size])
+            mat_N_t=tf.reshape(mat_N_t, [batch_size,batch_size])
+
+            mat_A=tf.cast(mat_A,dtype=tf.float32)
+            mat_Q=tf.cast(mat_Q,dtype=tf.float32)
+            mat_N_t=tf.cast(mat_N_t,dtype=tf.float32)
+
+            Num= tf.reduce_sum((mat_A*mat_N_t)*mat_Q)
+            Den=tf.reduce_sum(mat_A*mat_N_t)
+            #tf.print(mat_A, output_stream=sys.stdout)
+            #Num  = np.sum(((A)*N_t)*Q)
+            #Den  = np.sum((A)*N_t)
+            if Num != 0.0 and Den != 0.0:
+                nb+=1
+                resultat+=float(Num/Den)
+        """
+        order= tf.argsort(time)
+        i=0
+        tied=1e-2
+        num_tied=0
+        a=np.zeros([batch_size, batch_size])
+        while i<batch_size -1:
+            time_i=time[order[i]]
+            start=i+1
+            end= start
+            while end < batch_size and time[order[end]]==time_i:
+                end+=1
+
+            for j in range(i,end):
+                if event[order[j]]==1:
+                    for m in range(j+1, end):
+                        #print(y_pred[order[j], time[order[j]]])
+                        #print(y_pred[order[m], time[order[m]]])
+                        if event[order[m]]==1:
+                            num_tied+=1
+                            #j_tf=tf.constant(j, dtype=tf.int32)
+                            #j_tf=tf.constant(j, dtype=tf.int32)
+                            b= int(order[j])
+                            c= int(time[b])
+                            d= int(order[m])
+                            e= int(time[d])
+                            if abs(y_pred[b][c]- y_pred[d][e])<tied:
+                                print(type(a))
+                                print(type(f))
+                                a[b][d]+=1/2
+            i=end
+
+        resultat_tied=np.sum(a)"""
+        if resultat!=0:# or resultat_tied!=0:
+            #resultat = (resultat+resultat_tied)/(float(nb) + num_tied)
+            resultat = resultat/float(nb)
+        return float(resultat)
+    return cindex
+
+
+"""
 def metric_cindex(time_horizon_dim,batch_size):
     
     def cindex(y_true, y_pred):
@@ -271,4 +379,4 @@ def metric_cindex(time_horizon_dim,batch_size):
         if resultat!=0:
             resultat = resultat/float(nb)
         return float(resultat)
-    return cindex
+    return cindex"""

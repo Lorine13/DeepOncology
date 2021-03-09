@@ -94,9 +94,8 @@ class DataManagerSurvival(object):
 
     @staticmethod
     def split_train_val_test_split(x, y, test_size=0.0, val_size=0.2, random_state=42):
-    
         x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=val_size, random_state=random_state)
-        if test_size!=0:
+        if test_size!=0.:
             size = test_size/(1 - val_size)
             x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, test_size=size, random_state=random_state)
             return x_train, x_val, x_test, y_train, y_val, y_test
