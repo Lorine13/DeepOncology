@@ -128,10 +128,10 @@ class VnetSurvival(object):
         x = tf.keras.layers.Flatten()(x)
         if self.time_horizon<400:
             x = tf.keras.layers.Dense(512, activation='relu', name='dense_1')(x)
-            x = tf.keras.layers.Dropout(0.3)(x)
+            x = tf.keras.layers.Dropout(0.2)(x)
         if self.time_horizon<150:
             x = tf.keras.layers.Dense(256, activation='relu', name='dense_2')(x)
-            #x = tf.keras.layers.Dropout(0.2)(x)
+            x = tf.keras.layers.Dropout(0.1)(x)
         if self.time_horizon<80:
             x = tf.keras.layers.Dense(128, activation='relu', name='dense_3')(x)
 

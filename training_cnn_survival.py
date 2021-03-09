@@ -27,6 +27,12 @@ logdir = os.path.join(training_model_folder, 'logs')
 if not os.path.exists(logdir):
     os.makedirs(logdir)
 
+
+print("Num GPU available: ", len(tf.config.list_physical_devices('GPU')))
+
+
+
+
 #PARAMETRES IMAGE PROCESSING
 modalities = ('pet_img', 'ct_img') #input neural network ct and pet image
 mask=False 
@@ -90,7 +96,8 @@ with strategy.scope():
     optimizer = tfa.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-4)
     td_c_index = metric_td_c_index(time_horizon_dim=time_horizon, batch_size=batch_size)
     c_index= metric_cindex(time_horizon_dim=time_horizon,batch_size=batch_size)
-    metrics = [td_c_index, c_index] 
+    brier_score= get_brier_loss(time_horizon, batch_size)
+    metrics = [td_c_index, c_index, brier_score] 
 
 ############################ MODEL CALLBACKS #################################
 #PARAMETRES CALLBACKS

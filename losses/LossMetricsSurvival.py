@@ -1,15 +1,21 @@
 import tensorflow as tf
 import numpy as np
 import sys
-def get_brier_loss(time,event, time_horizon_dim, y_pred,batch_size):
-    event=tf.cast(event, dtype=tf.float32)
-    ones= tf.one_hot(time, time_horizon_dim)
-    preds= tf.reduce_sum(y_pred*ones, 1, keepdims=True)
-    preds= (preds-1)                           
-    
-    preds=preds**2
-    preds= preds*tf.reshape(event,[batch_size,1])
-    return tf.reduce_mean(preds)
+def get_brier_loss(time_horizon_dim, batch_size):
+
+    def brier_score(y_true, y_pred):
+        y_true = tf.cast(y_true, tf.int32)
+        time=y_true[0]
+        event=y_true[1]
+        event=tf.cast(event, dtype=tf.float32)
+        ones= tf.one_hot(time, time_horizon_dim)
+        preds= tf.reduce_sum(y_pred*ones, 1, keepdims=True)
+        preds= (preds-1)                           
+        
+        preds=preds**2
+        preds= preds*tf.reshape(event,[batch_size,1])
+        return tf.reduce_mean(preds)
+    return brier_score
 
 def get_logLikelihood_LOSS(time, event, time_horizon_dim, y_pred,batch_size):
     '''
@@ -122,9 +128,9 @@ def get_loss_survival(time_horizon_dim, batch_size, alpha, beta, gamma):
 
         loss_logLikelihood= get_logLikelihood_LOSS(time, event, time_horizon_dim, y_pred, batch_size)
         loss_ranking=get_ranking_LOSS(time, event, time_horizon_dim, y_pred, batch_size)
-        loss_brier=get_brier_loss(time,event, time_horizon_dim, y_pred,batch_size)
+        #loss_brier=get_brier_loss(time,event, time_horizon_dim, y_pred,batch_size)
         
-        loss= alpha*loss_logLikelihood + beta*loss_ranking +gamma*loss_brier
+        loss= alpha*loss_logLikelihood + beta*loss_ranking #+gamma*loss_brier
         return loss
 
     return loss_survival
@@ -217,90 +223,74 @@ def metric_cindex(time_horizon_dim,batch_size, tied_tol=1e-2):
         '''
         nb=0
         resultat=0.0
-        for j in range (batch_size):
+        tied=1e-2
+        num_tied_tot=0
+        num_tied_true=0
+        for i in range (batch_size):
             #results=tf.constant([])
             #a=tf.zeros([1,eval_time],dtype=tf.int32)
             #b=tf.ones([1,time_horizon_dim-eval_time],dtype=tf.int32)
             #c= tf.concat([a,b],1)
-            a=tf.ones([1,time[j]],dtype=tf.int32)
-            b=tf.zeros([1,time_horizon_dim-time[j]],dtype=tf.int32)
+            a=tf.ones([1,time[i]],dtype=tf.int32)
+            b=tf.zeros([1,time_horizon_dim-time[i]],dtype=tf.int32)
             c= tf.concat([a,b],1)
             c=tf.cast(c, dtype=tf.float32)
             d=y_pred*c
             pred_t=tf.math.reduce_sum(d,1, keepdims=True)
             
-            for i in range(batch_size):
-                A=tf.math.greater(time, time[i])
-                A=tf.where(A,1,0)
-                Q=tf.math.greater(pred_t[i],pred_t)
-                Q=tf.where(Q,1,0)
-                #A[i, np.where(time[i] < time)] = 1
-                #Q[i, np.where(pred_t[i] > pred_t)] = 1
+            ##########################
+            time_equal= tf.math.equal(time[i], time)
+            time_equal= tf.where(time_equal,1,0)
+            time_equal=tf.cast(time_equal, dtype=tf.int32)
+            event=tf.cast(event, dtype=tf.int32)
+            time_equal= time_equal*event
+            num_tied_tot+=tf.reduce_sum(time_equal[i+1:])
+            pred_equal = tf.math.less(abs(pred_t[i]-pred_t), tied)
+            pred_equal = tf.where(pred_equal, 1,0)
+            ties = tf.transpose(pred_equal)*time_equal
+            num_tied_true+=tf.reduce_sum(ties[:,i+1:])
+            ##########################
 
-                if (event[i]==1):
-                    N_t=tf.ones([1,batch_size])
-                else:
-                    N_t=tf.zeros([1,batch_size])
-                    #N_t[i,:] = 1
-                    
-                if i==0:
-                    mat_A=A
-                    mat_Q=Q
-                    mat_N_t=N_t
-                else:
-                    mat_A=tf.concat([mat_A,A],0)
-                    mat_Q=tf.concat([mat_Q,Q],0)
-                    mat_N_t=tf.concat([mat_N_t,N_t],0)
-            
-            mat_A=tf.reshape(mat_A, [batch_size,batch_size])
-            mat_Q=tf.reshape(mat_Q, [batch_size,batch_size])
-            mat_N_t=tf.reshape(mat_N_t, [batch_size,batch_size])
+            A=tf.math.greater(time, time[i])
+            A=tf.where(A,1,0)
+            Q=tf.math.greater(pred_t[i],pred_t)
+            Q=tf.where(Q,1,0)
+            #A[i, np.where(time[i] < time)] = 1
+            #Q[i, np.where(pred_t[i] > pred_t)] = 1
 
-            mat_A=tf.cast(mat_A,dtype=tf.float32)
-            mat_Q=tf.cast(mat_Q,dtype=tf.float32)
-            mat_N_t=tf.cast(mat_N_t,dtype=tf.float32)
+            if (event[i]==1):
+                N_t=tf.ones([1,batch_size])
+            else:
+                N_t=tf.zeros([1,batch_size])
+                #N_t[i,:] = 1
+                
+            if i==0:
+                mat_A=A
+                mat_Q=Q
+                mat_N_t=N_t
+            else:
+                mat_A=tf.concat([mat_A,A],0)
+                mat_Q=tf.concat([mat_Q,Q],0)
+                mat_N_t=tf.concat([mat_N_t,N_t],0)
+        
+        mat_A=tf.reshape(mat_A, [batch_size,batch_size])
+        mat_Q=tf.reshape(mat_Q, [batch_size,batch_size])
+        mat_N_t=tf.reshape(mat_N_t, [batch_size,batch_size])
 
-            Num= tf.reduce_sum((mat_A*mat_N_t)*mat_Q)
-            Den=tf.reduce_sum(mat_A*mat_N_t)
-            #tf.print(mat_A, output_stream=sys.stdout)
-            #Num  = np.sum(((A)*N_t)*Q)
-            #Den  = np.sum((A)*N_t)
-            if Num != 0.0 and Den != 0.0:
-                nb+=1
-                resultat+=float(Num/Den)
-        """
-        order= tf.argsort(time)
-        i=0
-        tied=1e-2
-        num_tied=0
-        a=np.zeros([batch_size, batch_size])
-        while i<batch_size -1:
-            time_i=time[order[i]]
-            start=i+1
-            end= start
-            while end < batch_size and time[order[end]]==time_i:
-                end+=1
+        mat_A=tf.cast(mat_A,dtype=tf.float64)
+        mat_Q=tf.cast(mat_Q,dtype=tf.float64)
+        mat_N_t=tf.cast(mat_N_t,dtype=tf.float64)
 
-            for j in range(i,end):
-                if event[order[j]]==1:
-                    for m in range(j+1, end):
-                        #print(y_pred[order[j], time[order[j]]])
-                        #print(y_pred[order[m], time[order[m]]])
-                        if event[order[m]]==1:
-                            num_tied+=1
-                            #j_tf=tf.constant(j, dtype=tf.int32)
-                            #j_tf=tf.constant(j, dtype=tf.int32)
-                            b= int(order[j])
-                            c= int(time[b])
-                            d= int(order[m])
-                            e= int(time[d])
-                            if abs(y_pred[b][c]- y_pred[d][e])<tied:
-                                print(type(a))
-                                print(type(f))
-                                a[b][d]+=1/2
-            i=end
+        Num= tf.reduce_sum((mat_A*mat_N_t)*mat_Q)+(int(num_tied_true)/2)
+        Den=tf.reduce_sum(mat_A*mat_N_t)#+int(num_tied_tot)
 
-        resultat_tied=np.sum(a)"""
+        #tf.print(mat_A, output_stream=sys.stdout)
+        #Num  = np.sum(((A)*N_t)*Q)
+        #Den  = np.sum((A)*N_t)
+        if Num != 0.0 and Den != 0.0:
+            nb+=1
+            resultat+=float(Num/Den)
+
         if resultat!=0:# or resultat_tied!=0:
             #resultat = (resultat+resultat_tied)/(float(nb) + num_tied)
             resultat = resultat/float(nb)
