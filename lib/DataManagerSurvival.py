@@ -16,13 +16,15 @@ class DataManagerSurvival(object):
         object ([type]): [description]
     """
 
-    def __init__(self, base_path=None,excel_path="FLIP.xlsx", csv_path=None):
+    def __init__(self, base_path=None,excel_path="FLIP.xlsx", csv_path=None, struct_data=False, columns=None):
         self.base_path = base_path
         self.excel_path=excel_path
         self.csv_path = csv_path
         self.seed = 42  # random state
         self.test_size = 0.0
         self.val_size = 0.2
+        self.struct_data=struct_data
+        self.columns= columns
 
     def get_data_survival(self, create_csv):
         '''
@@ -53,6 +55,7 @@ class DataManagerSurvival(object):
                 if nifti_path_PT and nifti_path_CT:
                     Anonym = np.append(Anonym,sheet.cell(row=i, column=2).value)
                     PT_paths=np.append(PT_paths, [nifti_path_PT[0]])
+
                     CT_paths=np.append(CT_paths, [nifti_path_CT[0]])
                 else:
                     data_exists=False
@@ -77,6 +80,13 @@ class DataManagerSurvival(object):
                     time= int(((last_checkup_date-diagnosis_date).days)/30)
                     y_time=np.append(y_time, [time])
                     y_event=np.append(y_event,[int(sheet.cell(row=i, column=7).value)])
+                    
+                if self.struct_data:
+                    for j in columns:
+                        if (sheet.cell(row=i, column=j).value!=None):
+                            egal= sheet.cell(row=i, column=j).value
+                        else: 
+                            data_exists= False
 
         y_event= y_event.astype(np.int32)
         y_time=y_time.astype(np.int32)
@@ -114,9 +124,3 @@ class DataManagerSurvival(object):
         
         return dataset_x['train'], dataset_x['val']
         
-
-
-
-
-
-

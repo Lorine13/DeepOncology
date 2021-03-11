@@ -1,6 +1,9 @@
 import tensorflow as tf
 import numpy as np
 import sys
+from lifelines import KaplanMeierFitter
+#import sksurv.metrics.concordance_index_ipcw
+
 def get_brier_loss(time_horizon_dim, batch_size):
 
     def brier_score(y_true, y_pred):
@@ -71,7 +74,7 @@ def get_ranking_LOSS(time, event, time_horizon_dim, y_pred, batch_size):
     loss  function η(P(x),P(y)) = exp(−(P(x)−P(y))/σ)
     where P(x) is the sum of probabilities for x to experience the event on time t <= tx -- (true time of x) --
     and P(y) is the sum of probabilities for y to experience the event on time t <= tx
-    translated to : a patient who dies at time s should have a higher risk at time s than a patient who survived longer than s
+    translated to : a patient who dies at a time s should have a higher risk at time s than a patient who survived longer than s
     '''
     #    mask is required calculate the ranking loss (for pair-wise comparision)
     #    mask size is [N, time_horizon_dim].
@@ -111,8 +114,12 @@ def get_ranking_LOSS(time, event, time_horizon_dim, y_pred, batch_size):
 
     T2 = tf.matmul(I_2, T)
     # only remains T_{ij}=1 when event occured for subject i
-    #tf.reduce_mean()
-    loss = tf.reduce_sum(tf.reduce_mean(T2 * tf.exp(-R2/sigma),1, keepdims=True))
+    loss = tf.reduce_mean(T2 * tf.exp(-R2/sigma)                        
+    
+    
+    )
+    #loss = tf.reduce_sum(tf.reduce_mean(T2 * tf.exp(-R2/sigma),1, keepdims=True))
+    #loss = tf.reduce_sum(tf.reduce_mean(1+(T2*tf.log(-sigma*R2)/log(2))) ###from the rnn surv paper supposedly less expensive computionnaly 
 
     return loss
 
@@ -223,10 +230,118 @@ def metric_cindex(time_horizon_dim,batch_size, tied_tol=1e-2):
         '''
         nb=0
         resultat=0.0
-        tied=1e-2
         num_tied_tot=0
         num_tied_true=0
         for i in range (batch_size):
+            #results=tf.constant([])
+            #a=tf.zeros([1,eval_time],dtype=tf.int32)
+            #b=tf.ones([1,time_horizon_dim-eval_time],dtype=tf.int32)
+            #c= tf.concat([a,b],1)
+            a=tf.ones([1,time[i]],dtype=tf.int32)
+            b=tf.zeros([1,time_horizon_dim-time[i]],dtype=tf.int32)
+            c= tf.concat([a,b],1)
+            c=tf.cast(c, dtype=tf.float32)
+            d=y_pred*c
+            pred_t=tf.math.reduce_sum(d,1, keepdims=True)
+            
+            ##########################
+            time_equal= tf.math.equal(time[i], time)
+            time_equal= tf.where(time_equal,1,0)
+            time_equal=tf.cast(time_equal, dtype=tf.int32)
+            event=tf.cast(event, dtype=tf.int32)
+            time_equal= time_equal*event
+            num_tied_tot+=tf.reduce_sum(time_equal[i+1:])
+            pred_equal = tf.math.less(abs(pred_t[i]-pred_t), tied_tol)
+            pred_equal = tf.where(pred_equal, 1,0)
+            ties = tf.transpose(pred_equal)*time_equal
+            num_tied_true+=tf.reduce_sum(ties[:,i+1:])
+            ##########################
+
+            A=tf.math.greater(time, time[i])
+            A=tf.where(A,1,0)
+            Q=tf.math.greater(pred_t[i],pred_t)
+            Q=tf.where(Q,1,0)
+
+            if (event[i]==1):
+                N_t=tf.ones([1,batch_size])
+            else:
+                N_t=tf.zeros([1,batch_size])
+                
+            if i==0:
+                mat_A=A
+                mat_Q=Q
+                mat_N_t=N_t
+            else:
+                mat_A=tf.concat([mat_A,A],0)
+                mat_Q=tf.concat([mat_Q,Q],0)
+                mat_N_t=tf.concat([mat_N_t,N_t],0)
+        
+        mat_A=tf.reshape(mat_A, [batch_size,batch_size])
+        mat_Q=tf.reshape(mat_Q, [batch_size,batch_size])
+        mat_N_t=tf.reshape(mat_N_t, [batch_size,batch_size])
+
+        mat_A=tf.cast(mat_A,dtype=tf.float64)
+        mat_Q=tf.cast(mat_Q,dtype=tf.float64)
+        mat_N_t=tf.cast(mat_N_t,dtype=tf.float64)
+
+        Num= tf.reduce_sum((mat_A*mat_N_t)*mat_Q)+(int(num_tied_true)/2)
+        Den=tf.reduce_sum(mat_A*mat_N_t)#+int(num_tied_tot)
+
+        #tf.print(mat_A, output_stream=sys.stdout)
+        if Num != 0.0 and Den != 0.0:
+            nb+=1
+            resultat+=float(Num/Den)
+
+        if resultat!=0:
+            resultat = resultat/float(nb)
+        return float(resultat)
+    return cindex
+
+
+
+def metric_cindex_weighted(time_horizon_dim,batch_size, y_val):
+    time_eval= [a[0] for a in y_val] #this will make an error for sure
+    event_eval= [a[0] for a in y_val]
+    def cindex_weighted(y_true, y_pred):
+        time=y_true[0]
+        event=y_true[1]
+        '''
+        This is a cause-specific c(t)-index
+        - Prediction      : risk at Time (higher --> more risky)
+        - Time_survival   : survival/censoring time
+        - Death           :
+            > 1: death
+            > 0: censored (including death from other cause)
+        - Time            : time of evaluation (time-horizon when evaluating C-index)
+        '''
+        nb=0
+        resultat=0.0
+        ###############error 
+        time_np=np.array([])
+        event_np=np.array([])
+        nb=0
+        resultat=0.0
+        tied=1e-2
+        num_tied_tot=0
+        num_tied_true=0
+        for i in range(batch_size):
+            time_np=np.append(time_np, time[i]) 
+            event_np= np.append(event_np, event[i]) 
+
+        kmf = KaplanMeierFitter()
+        kmf.fit(time_np, event_observed=(event_np==0).astype(int))  # censoring prob = survival probability of event "censoring"
+        G = np.asarray(kmf.survival_function_.reset_index()).transpose()
+        G[1, G[1, :] == 0] = G[1, G[1, :] != 0][-1]  #fill 0 with ZoH (to prevent nan values)
+        ################fin error
+        for i in range (batch_size):
+             #test
+            tmp_idx= np.where(G[0,:]>= time_eval[i])[0]
+            if len(tmp_idx)==0:
+                W=(1/G[1,-1])**2
+            else:
+                W=(1/G[1, tmp_idx[0]])**2
+            
+            ######
             #results=tf.constant([])
             #a=tf.zeros([1,eval_time],dtype=tf.int32)
             #b=tf.ones([1,time_horizon_dim-eval_time],dtype=tf.int32)
@@ -250,7 +365,6 @@ def metric_cindex(time_horizon_dim,batch_size, tied_tol=1e-2):
             ties = tf.transpose(pred_equal)*time_equal
             num_tied_true+=tf.reduce_sum(ties[:,i+1:])
             ##########################
-
             A=tf.math.greater(time, time[i])
             A=tf.where(A,1,0)
             Q=tf.math.greater(pred_t[i],pred_t)
@@ -295,78 +409,5 @@ def metric_cindex(time_horizon_dim,batch_size, tied_tol=1e-2):
             #resultat = (resultat+resultat_tied)/(float(nb) + num_tied)
             resultat = resultat/float(nb)
         return float(resultat)
-    return cindex
+    return cindex_weighted
 
-
-"""
-def metric_cindex(time_horizon_dim,batch_size):
-    
-    def cindex(y_true, y_pred):
-        time=y_true[0]
-        event=y_true[1]
-        '''
-        This is a cause-specific c(t)-index
-        - Prediction      : risk at Time (higher --> more risky)
-        - Time_survival   : survival/censoring time
-        - Death           :
-            > 1: death
-            > 0: censored (including death from other cause)
-        - Time            : time of evaluation (time-horizon when evaluating C-index)
-        '''
-        nb=0
-        resultat=0.0
-        for j in range (batch_size):
-            #results=tf.constant([])
-            #a=tf.zeros([1,eval_time],dtype=tf.int32)
-            #b=tf.ones([1,time_horizon_dim-eval_time],dtype=tf.int32)
-            #c= tf.concat([a,b],1)
-            a=tf.ones([1,time[j]],dtype=tf.int32)
-            b=tf.zeros([1,time_horizon_dim-time[j]],dtype=tf.int32)
-            c= tf.concat([a,b],1)
-            c=tf.cast(c, dtype=tf.float32)
-            d=y_pred*c
-            pred_t=tf.math.reduce_sum(d,1, keepdims=True)
-            
-            for i in range(batch_size):
-                A=tf.math.greater(time, time[i])
-                A=tf.where(A,1,0)
-                Q=tf.math.greater(pred_t[i],pred_t)
-                Q=tf.where(Q,1,0)
-                #A[i, np.where(time[i] < time)] = 1
-                #Q[i, np.where(pred_t[i] > pred_t)] = 1
-
-                if (event[i]==1):
-                    N_t=tf.ones([1,batch_size])
-                else:
-                    N_t=tf.zeros([1,batch_size])
-                    #N_t[i,:] = 1
-                    
-                if i==0:
-                    mat_A=A
-                    mat_Q=Q
-                    mat_N_t=N_t
-                else:
-                    mat_A=tf.concat([mat_A,A],0)
-                    mat_Q=tf.concat([mat_Q,Q],0)
-                    mat_N_t=tf.concat([mat_N_t,N_t],0)
-            
-            mat_A=tf.reshape(mat_A, [batch_size,batch_size])
-            mat_Q=tf.reshape(mat_Q, [batch_size,batch_size])
-            mat_N_t=tf.reshape(mat_N_t, [batch_size,batch_size])
-
-            mat_A=tf.cast(mat_A,dtype=tf.float32)
-            mat_Q=tf.cast(mat_Q,dtype=tf.float32)
-            mat_N_t=tf.cast(mat_N_t,dtype=tf.float32)
-
-            Num= tf.reduce_sum((mat_A*mat_N_t)*mat_Q)
-            Den=tf.reduce_sum(mat_A*mat_N_t)
-            #tf.print(mat_A, output_stream=sys.stdout)
-            #Num  = np.sum(((A)*N_t)*Q)
-            #Den  = np.sum((A)*N_t)
-            if Num != 0.0 and Den != 0.0:
-                nb+=1
-                resultat+=float(Num/Den)
-        if resultat!=0:
-            resultat = resultat/float(nb)
-        return float(resultat)
-    return cindex"""

@@ -3,14 +3,14 @@ from datetime import datetime
 import math 
 import matplotlib.pyplot as plt
 
-import tensorflow_addons as tfa
+import tensorflow as tf
 from tensorflow.keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping, TensorBoard
 from experiments.exp_3d.preprocessing import * #getTransform
 from lib.data_loader import DataGeneratorSurvival
 from networks.VnetSurvival import *
 from lib.DataManagerSurvival import DataManagerSurvival
 from losses.LossMetricsSurvival import *
-
+import tensorflow_addons as tfa
 """ 
     For now based on : 
     https://nbviewer.jupyter.org/github/sebp/survival-cnn-estimator/blob/master/tutorial_tf2.ipynb 
@@ -27,10 +27,15 @@ logdir = os.path.join(training_model_folder, 'logs')
 if not os.path.exists(logdir):
     os.makedirs(logdir)
 
-
+print("########################################")
+print(tf.__version__)
 print("Num GPU available: ", len(tf.config.list_physical_devices('GPU')))
-
-
+gpu= tf.config.list_physical_devices('GPU')
+tf.config.experimental.set_memory_growth(gpu[0], True)
+tf.config.experimental.set_memory_growth(gpu[1], True) #limit gpu memory
+os.environ['CUDA_VISIBLE_DEVICES']='-1'
+print(tf.config.list_physical_devices('GPU'))
+print("########################################")
 
 
 #PARAMETRES IMAGE PROCESSING
@@ -49,11 +54,11 @@ target_direction = (1,0,0,0,1,0,0,0,1)
 # PARAMETRES DATA MANAGER 
 base_path='../../FLIP_NIFTI_COMPLET/'
 excel_path='../FLIP.xlsx'
-csv_path="../CSV_FLIP.csv"
+csv_path='../CSV_FLIP.csv'
 create_csv = False
 
 #PARAMETRE DATA GENERATOR
-batch_size = 4
+batch_size = 2
 epochs = 70
 shuffle = True 
 
@@ -97,6 +102,7 @@ with strategy.scope():
     td_c_index = metric_td_c_index(time_horizon_dim=time_horizon, batch_size=batch_size)
     c_index= metric_cindex(time_horizon_dim=time_horizon,batch_size=batch_size)
     brier_score= get_brier_loss(time_horizon, batch_size)
+    c_index_weighted= metric_cindex_weighted(time_horizon_dim=time_horizon,batch_size=batch_size, y_val=y_val)
     metrics = [td_c_index, c_index, brier_score] 
 
 ############################ MODEL CALLBACKS #################################
